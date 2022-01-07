@@ -1,0 +1,246 @@
+diff -u -r original/Hexamer.cpp fig5/Hexamer.cpp
+--- original/Hexamer.cpp	2017-02-07 23:16:22.000000000 +0900
++++ fig5/Hexamer.cpp	2022-01-06 17:15:16.249411643 +0900
+@@ -39,7 +39,7 @@
+     
+     if(this->sys->start_phosphorylated)
+     {   
+-      double rnd( ran_get() );
++      //double rnd( ran_get() );
+       bool S(0),T(0);      
+       
+       //different starting fractions of monomer phosphorylation states.
+@@ -47,20 +47,25 @@
+       //double Tfrac(0.06), Sfrac(0.25), Dfrac(0.10);      
+       //double Tfrac(0.07), Sfrac(0.33), Dfrac(0.18);
+       //double Tfrac(0.00), Sfrac(0.0), Dfrac(1.0);
+-      double Tfrac(0.10), Sfrac(0.15), Dfrac(0.40);     
++      //double Tfrac(0.10), Sfrac(0.15), Dfrac(0.40);     
+       
+-      if(rnd < Dfrac) 
++      //if(rnd < Dfrac) 
++      //{
++      //  T=1; S=1; //D-state
++      //}    
++      //if(rnd > Dfrac && rnd < Dfrac + Tfrac) 
++      //{
++      //  T=1; S=0; //T-state
++      //}
++      //if(rnd > Dfrac + Tfrac && rnd < Dfrac + Tfrac + Sfrac) 
++      //{
++      //  T=0; S=1; //S-state
++      //}
++      
++      if(i%6 < this->sys->start_phosphorylated) 
+       {
+         T=1; S=1; //D-state
+       }    
+-      if(rnd > Dfrac && rnd < Dfrac + Tfrac) 
+-      {
+-        T=1; S=0; //T-state
+-      }
+-      if(rnd > Dfrac + Tfrac && rnd < Dfrac + Tfrac + Sfrac) 
+-      {
+-        T=0; S=1; //S-state
+-      }
+            
+       monomers[i].initialize_state(i - 6*index,T,S,1,ran_bool(sys->ATPfrac));
+     }
+diff -u -r original/main.cpp fig5/main.cpp
+--- original/main.cpp	2017-02-10 01:57:06.000000000 +0900
++++ fig5/main.cpp	2022-01-06 17:15:16.249411643 +0900
+@@ -42,33 +42,46 @@
+ /* Let's roll */
+ int main(int argc, char *argv[])
+ {   
+-  // First set name of parameter file (default.par if no argument is given).
+-  SystemVariables sys;
+-  if(argc > 1)
+-  {
+-    strncpy(sys.param_filename, argv[1], 128);
+-  }
+-  else
+-  {
+-    strcpy(sys.param_filename,"default.par");
++  if(argc==1){cerr << "No parameter file" << endl;return 0;}
++  SystemVariables sysMaster[argc-1];
++  for (int irun=1;irun< argc;irun++){
++    strncpy(sysMaster[irun-1].param_filename, argv[irun], 128);
++    cerr << "Parameter file set to: " << sysMaster[irun-1].param_filename << endl; 
++    initialize_system_vars(&sysMaster[irun-1]);
++    allocate_data_array(&sysMaster[irun-1]);
+   }
+-  cerr << "Parameter file set to: " << sys.param_filename << endl; 
+-
+-  //Read system variables from parameter file and initialize.
+-  initialize_system_vars(&sys);
++  ran_init(sysMaster[0].rnd_seed);
+   
+-  //Read reaction rates from parameter file.
+-  ReactionConstants reaction_consts( initialize_reaction_consts(&sys) );
++  int Nitr(100);
++  for (int iitr=0;iitr< Nitr;iitr++){
+ 
++  SystemVariables sys;
++  strncpy(sys.param_filename, argv[1], 128);
++  cerr << "Parameter file set to: " << sys.param_filename << endl; 
++  initialize_system_vars(&sys);
++  allocate_data_array(&sys);
+   //Initialize random number generator with (time-dependent, 0) seed.
+-  ran_init(sys.rnd_seed);
+-
+   //Create proensity container, Hexamers and Monomer objects.
+   PropensityContainer prop_cont(sys.N_hexamers); 
+   Hexamer *hexamers = new Hexamer[sys.N_hexamers];
+   Monomer *monomers = new Monomer[6*sys.N_hexamers];
++
++  // First set name of parameter file (default.par if no argument is given).
++  for (int irun=1;irun< argc;irun++)
++  {
++  if(irun>1)
++  {
++    strncpy(sys.param_filename, argv[irun], 128);
++    cerr << "Parameter file set to: " << sys.param_filename << endl; 
++    //Read system variables from parameter file and initialize.
++    initialize_system_vars(&sys);
++    allocate_data_array(&sys);
++  }
++
+   
+-  allocate_data_array(&sys);
++  //Read reaction rates from parameter file.
++  ReactionConstants reaction_consts( initialize_reaction_consts(&sys) );
++
+    
+   //Initialize hexamer and monomer states and initialize their propensities.
+   for(int i(0); i<sys.N_hexamers; i++)
+@@ -76,8 +89,10 @@
+     hexamers[i].set_prop_container(&prop_cont);
+     hexamers[i].set_reaction_consts(&reaction_consts); 
+     hexamers[i].set_sysvars(&sys);
+-    hexamers[i].initialize_state(i,1,0,0,0); 
+-    hexamers[i].set_sextet(monomers); 
++    if (irun==1){
++      hexamers[i].initialize_state(i,1,0,0,0); 
++      hexamers[i].set_sextet(monomers); 
++    }
+     hexamers[i].set_propensities();
+   }
+ 
+@@ -113,9 +128,62 @@
+  
+   }
+   
++  for(int j(0); j < sys.sample_cnt; j++ ) 
++  {
++    sysMaster[irun-1].Aoutput_data[j].t          +=sys.Aoutput_data[j].t/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].p          +=sys.Aoutput_data[j].p/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].Afree      +=sys.Aoutput_data[j].Afree/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].ACI        +=sys.Aoutput_data[j].ACI/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].ACII       +=sys.Aoutput_data[j].ACII/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].Atot       +=sys.Aoutput_data[j].Atot/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].CIATP      +=sys.Aoutput_data[j].CIATP/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].CIIATP     +=sys.Aoutput_data[j].CIIATP/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].Ttot       +=sys.Aoutput_data[j].Ttot/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].Stot       +=sys.Aoutput_data[j].Stot/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].pU         +=sys.Aoutput_data[j].pU/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].pT         +=sys.Aoutput_data[j].pT/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].pD         +=sys.Aoutput_data[j].pD/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].pS         +=sys.Aoutput_data[j].pS/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].CIATPcons  +=sys.Aoutput_data[j].CIATPcons/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].dCIATPcons +=sys.Aoutput_data[j].dCIATPcons/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].CIIATPcons +=sys.Aoutput_data[j].CIIATPcons/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].dCIIATPcons+=sys.Aoutput_data[j].dCIIATPcons/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].dGconfADP  +=sys.Aoutput_data[j].dGconfADP/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].dGACIIbind +=sys.Aoutput_data[j].dGACIIbind/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].kADPoff    +=sys.Aoutput_data[j].kADPoff/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].active     +=sys.Aoutput_data[j].active/Nitr;
++    sysMaster[irun-1].Aoutput_data[j].BCI        +=sys.Aoutput_data[j].BCI/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].t          +=sys.Ioutput_data[j].t/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].p          +=sys.Ioutput_data[j].p/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].Afree      +=sys.Ioutput_data[j].Afree/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].ACI        +=sys.Ioutput_data[j].ACI/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].ACII       +=sys.Ioutput_data[j].ACII/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].Atot       +=sys.Ioutput_data[j].Atot/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].CIATP      +=sys.Ioutput_data[j].CIATP/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].CIIATP     +=sys.Ioutput_data[j].CIIATP/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].Ttot       +=sys.Ioutput_data[j].Ttot/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].Stot       +=sys.Ioutput_data[j].Stot/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].pU         +=sys.Ioutput_data[j].pU/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].pT         +=sys.Ioutput_data[j].pT/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].pD         +=sys.Ioutput_data[j].pD/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].pS         +=sys.Ioutput_data[j].pS/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].CIATPcons  +=sys.Ioutput_data[j].CIATPcons/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].dCIATPcons +=sys.Ioutput_data[j].dCIATPcons/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].CIIATPcons +=sys.Ioutput_data[j].CIIATPcons/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].dCIIATPcons+=sys.Ioutput_data[j].dCIIATPcons/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].dGconfADP  +=sys.Ioutput_data[j].dGconfADP/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].dGACIIbind +=sys.Ioutput_data[j].dGACIIbind/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].kADPoff    +=sys.Ioutput_data[j].kADPoff/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].active     +=sys.Ioutput_data[j].active/Nitr;
++    sysMaster[irun-1].Ioutput_data[j].BCI        +=sys.Ioutput_data[j].BCI/Nitr;
++  }
+   /* ### For normal output ### */
+-  write_outputfile(&sys);  
+-  
++  //write_outputfile(&sys);  
++  }
++  }
++  for (int irun=1;irun< argc;irun++){
++    write_outputfile(&sysMaster[irun-1]);
++  }
+   cerr << "System Ready" << endl;
+ }
+   
+@@ -166,7 +234,8 @@
+       if( hexamers[i].get_CIKaiB_bound() == reaction_consts->nBseq && 
+           hexamers[i].get_CIKaiA_bound() == 0 ) ACIB++;     
+       if( hexamers[i].get_CIKaiA_bound() > 0 ) ACIBA += 1;
+-      AACII += hexamers[i].get_CIIKaiA_bound();
++      AACII += hexamers[i].get_CIKaiB_bound();
++      //AACII += hexamers[i].get_CIIKaiA_bound();
+       ACIATP += hexamers[i].get_hex_CIATP();
+       ACIATPstd += hexamers[i].get_hex_CIATP()*hexamers[i].get_hex_CIATP();     
+       ACIIATP += hexamers[i].get_hex_CIIATP();
+@@ -188,7 +257,8 @@
+       if( hexamers[i].get_CIKaiB_bound() == reaction_consts->nBseq && 
+           hexamers[i].get_CIKaiA_bound() == 0 ) ICIB++;
+       if( hexamers[i].get_CIKaiA_bound() > 0 ) ICIBA += 1;
+-      IACII += hexamers[i].get_CIIKaiA_bound();
++      IACII += hexamers[i].get_CIKaiB_bound();
++      //IACII += hexamers[i].get_CIIKaiA_bound();
+       ICIATP += hexamers[i].get_hex_CIATP();
+       ICIATPstd += hexamers[i].get_hex_CIATP()*hexamers[i].get_hex_CIATP();
+       ICIIATP += hexamers[i].get_hex_CIIATP();
+@@ -235,7 +305,8 @@
+   Ahex_avr_data.p        = (double) Ap/(6*N_hexamers);
+   Ahex_avr_data.ACI      = (double) ACIBA/(KaiA0 * sys->volume);
+   Ahex_avr_data.BCI      = (double) ACIB/(KaiC0 * sys->volume);    
+-  Ahex_avr_data.ACII     = (double) AACII/(KaiA0 * sys->volume);
++  Ahex_avr_data.ACII     = (double) AACII/(6*N_hexamers);
++  //Ahex_avr_data.ACII     = (double) AACII/(KaiA0 * sys->volume);
+   Ahex_avr_data.CIATP    = (double) ACIATP/N_hexamers;
+   Ahex_avr_data.CIIATP   = (double) ACIIATP/N_hexamers;
+   Ahex_avr_data.Ttot     = (double) ATtot/N_hexamers;
+@@ -252,7 +323,8 @@
+   Ihex_avr_data.p        = (double) Ip/(6*N_hexamers);
+   Ihex_avr_data.ACI      = (double) ICIBA/(KaiA0 * sys->volume);
+   Ihex_avr_data.BCI      = (double) ICIB/(KaiC0 * sys->volume);
+-  Ihex_avr_data.ACII     = (double) IACII/(KaiA0 * sys->volume);
++  Ihex_avr_data.ACII     = (double) IACII/(6*N_hexamers);
++  //Ihex_avr_data.ACII     = (double) IACII/(KaiA0 * sys->volume);
+   Ihex_avr_data.CIATP    = (double) ICIATP/N_hexamers;
+   Ihex_avr_data.CIIATP   = (double) ICIIATP/N_hexamers;
+   Ihex_avr_data.Ttot     = (double) ITtot/N_hexamers;
+diff -u -r original/main.hpp fig5/main.hpp
+--- original/main.hpp	2017-02-08 23:42:00.000000000 +0900
++++ fig5/main.hpp	2022-01-06 17:15:22.398550863 +0900
+@@ -163,7 +163,7 @@
+   double tsim;
+   double tequ;
+   
+-  bool start_phosphorylated;
++  int start_phosphorylated;
+   
+   //Number of hexamers in system.
+   int N_hexamers;
